@@ -1,0 +1,79 @@
+---
+title: "DATA607_Week3"
+author: "Logan Thomson"
+date: "February 13, 2016"
+output: html_document
+---
+
+###Setting Up Database Connection
+After setting up the tables in SQL, we can use the `RMySQL` package to connect to the MySQL database and use an SQL script just as we would in MySQL.  
+
+```{r}
+library('RMySQL')
+drv <- dbDriver('MySQL')
+con <- dbConnect(drv, user="root", password="", dbname = "tb",
+                 host = "localhost")
+```
+
+Using the combination of the MySQL driver stored in `drv` and the database connection, stored in `con`, we can view the tables in our database
+```{r}
+dbListTables(con)
+```
+
+As well as view the fields in a particular table
+```{r}
+dbListFields(con, "tb")
+```
+
+#### Querying the Database  
+Following is the code that does most of the work. This is the same `SELECT` statement that wold retrieve the data from each table and combine it together to return the data. The SQL script is stored in the `query` object.
+
+```{r, warning=FALSE}
+query <- "SELECT t.country, t.year, sum(t.cases) AS cases, p.population,
+(t.cases / p.population) * 1000 AS rate
+FROM tb_cases AS t
+INNER JOIN population AS p
+ON p.country = t.country
+AND p.year = t.year
+WHERE cases is not null
+GROUP BY t.country, t.year"
+
+cases_per_1000 <- dbGetQuery(con, query)
+```
+
+Using `dbGetQuery` and calling our `con` connection object and the SQL script stored in `query`, we can store the retrieved data in an object, which I have called `cases_per_1000`.  Because the rate returned by dividing cases by population was small, I used a multiple to return a more managable number.
+```{r, warning=FALSE}
+dbDisconnect(con)
+dbUnloadDriver(drv)
+```
+
+###Creating Data Frame  
+To manipulate the data in R, the returned SQL data can be stored in a data frame, which I have called `cases_df`.  Below is a preview of the first few rows:  
+```{r}
+cases_df <- data.frame(cases_per_1000)
+head(cases_df)
+```
+
+And  here are the summary statistics for the data:  
+
+```{r}
+summary(cases_df)
+```
+
+###Plotting Data  
+
+Lets make a quick histogram of the rate data to see what we are working with:
+```{r, fig.width=10, fig.height=6}
+hist(cases_df$rate, breaks=30)
+```
+
+In most years, countries have less than 1 case per 1000, and in more severe cases, there are several cases per 1000 people, which is a relatively high rate.  Still, for the rates below 1 per 1000, there is a lot of variance.  
+
+Let's take a look at two countries that greatly differ in their overall economies, the United States, and Angola (TB rates in Africa are generally higher than other parts of the world):  
+
+```{r, fig.width=10}
+library(ggplot2)
+US_vs_Angola <- subset(cases_df, country == 'Angola'| country == 'United States of America')
+ggplot(US_vs_Angola, aes(x=US_vs_Angola$year, y=US_vs_Angola$rate)) + geom_point(aes(color = US_vs_Angola$country)) + labs(title='TB Cases United States vs. Angola', x="Year", y="TB Rate per 1000 People")
+```
+Though both have rates that are below 1 case per 1000 people, the rate of TB cases in Angola is much higher than that of the rate in the United States, which is virtually zero.
